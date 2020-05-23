@@ -1,0 +1,481 @@
+import os
+import argparse
+import sys
+import sqlite3
+
+import constants
+
+#
+# MIT License
+#
+# https://opensource.org/licenses/MIT
+#
+# Copyright 2020 Rene Sugar
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+joplinColumns = [
+  "joplin_id",
+  "joplin_parent_id",
+  "joplin_type_",
+  "joplin_created_time",
+  "joplin_updated_time",
+  "joplin_is_conflict",
+  "joplin_latitude",
+  "joplin_longitude",
+  "joplin_altitude",
+  "joplin_author",
+  "joplin_source_url",
+  "joplin_is_todo",
+  "joplin_todo_due",
+  "joplin_todo_completed",
+  "joplin_source",
+  "joplin_source_application",
+  "joplin_application_data",
+  "joplin_order",
+  "joplin_user_created_time",
+  "joplin_user_updated_time",
+  "joplin_encryption_cipher_text",
+  "joplin_encryption_applied",
+  "joplin_encryption_blob_encrypted",
+  "joplin_size",
+  "joplin_markup_language",
+  "joplin_is_shared",
+  "joplin_note_id",
+  "joplin_tag_id",
+  "joplin_mime",
+  "joplin_filename",
+	"joplin_file_extension"
+]
+
+joplinColumnTypes = [
+  "TEXT",
+  "TEXT",
+  "INTEGER",
+  "TEXT",
+  "TEXT",
+  "INTEGER",
+  "FLOAT",
+  "FLOAT",
+  "FLOAT",
+  "TEXT",
+  "TEXT",
+  "INTEGER",
+  "INTEGER",
+  "INTEGER",
+  "TEXT",
+  "TEXT",
+  "TEXT",
+  "INTEGER",
+  "TEXT",
+  "TEXT",
+  "TEXT",
+  "INTEGER",
+  "INTEGER",
+  "INTEGER",
+  "INTEGER",
+  "INTEGER",
+  "TEXT",
+  "TEXT",
+  "TEXT",
+  "TEXT",
+	"TEXT"
+]
+
+def create_database(sqlconn, db_schema_version, email_address):
+  print("creating database...")
+  sqlconn.execute('''CREATE TABLE settings (name TEXT PRIMARY KEY, value TEXT);''')
+  sqlconn.execute('''INSERT INTO settings (name, value) VALUES (?, ?);''',
+       ('email_address', email_address))
+  sqlconn.execute('''INSERT INTO settings (name, value) VALUES (?, ?);''',
+       ('db_version', db_schema_version))
+  sqlconn.execute('''CREATE TABLE IF NOT EXISTS "notes" (
+  "note_id"  INTEGER,
+  "note_type" TEXT,
+  "note_uuid" TEXT,
+  "note_parent_uuid" TEXT,
+  "note_tag_uuid" TEXT,
+  "note_note_uuid" TEXT,
+  "note_original_format"  TEXT,
+  "note_internal_date"  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  "note_hash"  TEXT,
+  "note_title"  TEXT,
+  "note_data"  TEXT,
+  "note_data_format"  TEXT,
+  "note_url" TEXT,
+  "email_filename"  TEXT,
+  "email_from"  TEXT,
+  "email_x_uniform_type_identifier"  TEXT,
+  "email_content_type"  TEXT,
+  "email_content_transfer_encoding"  TEXT,
+  "email_mime_version"  TEXT,
+  "email_date"  TEXT,
+  "email_x_mail_created_date"  TEXT,
+  "email_subject"  TEXT,
+  "email_x_universally_unique_identifier"  TEXT,
+  "email_message_id"  TEXT,
+  "email_body"  TEXT,
+  "apple_id"  INTEGER,
+  "apple_title"  TEXT,
+  "apple_snippet"  TEXT,
+  "apple_folder"  TEXT,
+  "apple_created"  TEXT,
+  "apple_last_modified"  TEXT,
+  "apple_data"  TEXT,
+  "apple_attachment_id"  TEXT,
+  "apple_attachment_path"  TEXT,
+  "apple_account_description"  TEXT,
+  "apple_account_identifier"  TEXT,
+  "apple_account_username"  TEXT,
+  "apple_version"  TEXT,
+  "apple_user"  TEXT,
+  "apple_source"  TEXT,
+  "joplin_id"  TEXT,
+  "joplin_parent_id"  TEXT,
+  "joplin_type_"  INTEGER,
+  "joplin_created_time"  TEXT,
+  "joplin_updated_time"  TEXT,
+  "joplin_is_conflict"  INTEGER,
+  "joplin_latitude"  FLOAT,
+  "joplin_longitude"  FLOAT,
+  "joplin_altitude"  FLOAT,
+  "joplin_author"  TEXT,
+  "joplin_source_url"  TEXT,
+  "joplin_is_todo"  INTEGER,
+  "joplin_todo_due"  INTEGER,
+  "joplin_todo_completed"  INTEGER,
+  "joplin_source"  TEXT,
+  "joplin_source_application"  TEXT,
+  "joplin_application_data"  TEXT,
+  "joplin_order"  INTEGER,
+  "joplin_user_created_time"  TEXT,
+  "joplin_user_updated_time"  TEXT,
+  "joplin_encryption_cipher_text"  TEXT,
+  "joplin_encryption_applied"  INTEGER,
+  "joplin_encryption_blob_encrypted"  INTEGER,
+  "joplin_size"  INTEGER,
+  "joplin_markup_language"  INTEGER,
+  "joplin_is_shared"  INTEGER,
+  "joplin_note_id"  TEXT,
+  "joplin_tag_id"  TEXT,
+  "joplin_mime"  TEXT,
+  "joplin_filename"  TEXT,
+	"joplin_file_extension" TEXT,
+  PRIMARY KEY("note_id")
+  );''')
+  sqlconn.execute('''CREATE INDEX IF NOT EXISTS "hashidx" ON "notes" (
+    "note_hash"
+  );''')
+  sqlconn.execute('''CREATE INDEX IF NOT EXISTS "dateidx" ON "notes" (
+    "note_internal_date"
+  );''')
+  sqlconn.commit()
+
+#
+# Use settings schema from gyb2eml
+#
+def get_db_settings(sqlcur, db_schema_version):
+  try:
+    sqlcur.execute('SELECT name, value FROM settings')
+    db_settings = dict(sqlcur) 
+    return db_settings
+  except sqlite3.OperationalError as e:
+    print("%s" % e)
+    sys.exit(6)
+
+def check_db_settings(db_settings, prog, version, db_schema_min_version, db_schema_version):
+  if (db_settings['db_version'] < db_schema_min_version  or
+      db_settings['db_version'] > db_schema_version):
+    print("\n\nThis database was created with version %s of the \
+database schema while this program %s requires version %s - %s"
+% (db_settings['db_version'], prog, db_schema_min_version,
+db_schema_version))
+    sys.exit(4)
+
+def create_macapt_database(sqlconn):
+  print("creating database...")
+  sqlconn.execute('''CREATE TABLE IF NOT EXISTS "Notes" (
+  "ID"  INTEGER,
+  "Title"  TEXT,
+  "Snippet"  TEXT,
+  "Folder"  TEXT,
+  "Created"  TEXT,
+  "LastModified"  TEXT,
+  "Data"  TEXT,
+  "AttachmentID"  TEXT,
+  "AttachmentPath"  TEXT,
+  "AccountDescription"  TEXT,
+  "AccountIdentifier"  TEXT,
+  "AccountUsername"  TEXT,
+  "Version"  TEXT,
+  "User"  TEXT,
+  "Source"  TEXT
+  );''')
+  sqlconn.commit()
+
+def add_macapt_note(sqlconn, columns):
+  sqlconn.execute('''INSERT INTO Notes (ID,
+  Title,
+  Snippet,
+  Folder,
+  Created,
+  LastModified,
+  Data,
+  AttachmentID,
+  AttachmentPath,
+  AccountDescription,
+  AccountIdentifier,
+  AccountUsername,
+  Version,
+  User,
+  Source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',
+         (columns["apple_id"],
+          columns["apple_title"],
+          columns["apple_snippet"],
+          columns["apple_folder"],
+          columns["apple_created"],
+          columns["apple_last_modified"],
+          columns["apple_data"],
+          columns["apple_attachment_id"],
+          columns["apple_attachment_path"],
+          columns["apple_account_description"],
+          columns["apple_account_identifier"],
+          columns["apple_account_username"],
+          columns["apple_version"],
+          columns["apple_user"],
+          columns["apple_source"]))
+
+def add_email_note(sqlconn, columns):
+  sqlconn.execute('''INSERT INTO notes (
+  note_type,
+  note_uuid,
+  note_parent_uuid,
+  note_original_format,
+  note_internal_date,
+  note_hash,
+  note_title,
+  note_data,
+  note_data_format,
+  note_url,
+  email_filename,
+  email_from,
+  email_x_uniform_type_identifier,
+  email_content_type,
+  email_content_transfer_encoding,
+  email_mime_version,
+  email_date,
+  email_x_mail_created_date,
+  email_subject,
+  email_x_universally_unique_identifier,
+  email_message_id,
+  email_body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',
+         (columns["note_type"],
+          columns["note_uuid"],
+          columns["note_parent_uuid"],
+          columns["note_original_format"],
+          columns["note_internal_date"],
+          columns["note_hash"],
+          columns["note_title"],
+          columns["note_data"],
+          columns["note_data_format"],
+          columns["note_url"],
+          columns["email_filename"],
+          columns["email_from"],
+          columns["email_x_uniform_type_identifier"],
+          columns["email_content_type"],
+          columns["email_content_transfer_encoding"],
+          columns["email_mime_version"],
+          columns["email_date"],
+          columns["email_x_mail_created_date"],
+          columns["email_subject"],
+          columns["email_x_universally_unique_identifier"],
+          columns["email_message_id"],
+          columns["email_body"]))
+
+def add_apple_note(sqlconn, columns):
+  sqlconn.execute('''INSERT INTO notes (
+  note_type,
+  note_uuid,
+  note_parent_uuid,
+  note_original_format,
+  note_internal_date,
+  note_hash,
+  note_title,
+  note_data,
+  note_data_format,
+  note_url,
+  apple_id,
+  apple_title,
+  apple_snippet,
+  apple_folder,
+  apple_created,
+  apple_last_modified,
+  apple_data,
+  apple_attachment_id,
+  apple_attachment_path,
+  apple_account_description,
+  apple_account_identifier,
+  apple_account_username,
+  apple_version,
+  apple_user,
+  apple_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',
+         (columns["note_type"],
+          columns["note_uuid"],
+          columns["note_parent_uuid"],
+          columns["note_original_format"],
+          columns["note_internal_date"],
+          columns["note_hash"],
+          columns["note_title"],
+          columns["note_data"],
+          columns["note_data_format"],
+          columns["note_url"],
+          columns["apple_id"],
+          columns["apple_title"],
+          columns["apple_snippet"],
+          columns["apple_folder"],
+          columns["apple_created"],
+          columns["apple_last_modified"],
+          columns["apple_data"],
+          columns["apple_attachment_id"],
+          columns["apple_attachment_path"],
+          columns["apple_account_description"],
+          columns["apple_account_identifier"],
+          columns["apple_account_username"],
+          columns["apple_version"],
+          columns["apple_user"],
+          columns["apple_source"]))
+
+def add_joplin_note(sqlconn, columns):
+  sqlconn.execute('''INSERT INTO notes (
+  note_type,
+  note_uuid,
+  note_parent_uuid,
+  note_tag_uuid,
+  note_note_uuid,
+  note_original_format,
+  note_internal_date,
+  note_hash,
+  note_title,
+  note_data,
+  note_data_format,
+  note_url,
+  apple_id,
+  apple_title,
+  apple_snippet,
+  apple_folder,
+  apple_created,
+  apple_last_modified,
+  apple_data,
+  apple_attachment_id,
+  apple_attachment_path,
+  apple_account_description,
+  apple_account_identifier,
+  apple_account_username,
+  apple_version,
+  apple_user,
+  apple_source,
+  joplin_id,
+  joplin_parent_id,
+  joplin_type_,
+  joplin_created_time,
+  joplin_updated_time,
+  joplin_is_conflict,
+  joplin_latitude,
+  joplin_longitude,
+  joplin_altitude,
+  joplin_author,
+  joplin_source_url,
+  joplin_is_todo,
+  joplin_todo_due,
+  joplin_todo_completed,
+  joplin_source,
+  joplin_source_application,
+  joplin_application_data,
+  joplin_order,
+  joplin_user_created_time,
+  joplin_user_updated_time,
+  joplin_encryption_cipher_text,
+  joplin_encryption_applied,
+  joplin_encryption_blob_encrypted,
+  joplin_size,
+  joplin_markup_language,
+  joplin_is_shared,
+  joplin_note_id,
+  joplin_tag_id,
+  joplin_mime,
+  joplin_filename,
+	joplin_file_extension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',
+         (columns["note_type"],
+          columns["note_uuid"],
+          columns["note_parent_uuid"],
+          columns["note_tag_uuid"],
+          columns["note_note_uuid"],
+          columns["note_original_format"],
+          columns["note_internal_date"],
+          columns["note_hash"],
+          columns["note_title"],
+          columns["note_data"],
+          columns["note_data_format"],
+					columns["note_url"],
+          columns["apple_id"],
+          columns["apple_title"],
+          columns["apple_snippet"],
+          columns["apple_folder"],
+          columns["apple_created"],
+          columns["apple_last_modified"],
+          columns["apple_data"],
+          columns["apple_attachment_id"],
+          columns["apple_attachment_path"],
+          columns["apple_account_description"],
+          columns["apple_account_identifier"],
+          columns["apple_account_username"],
+          columns["apple_version"],
+          columns["apple_user"],
+          columns["apple_source"],
+          columns["joplin_id"],
+          columns["joplin_parent_id"],
+          columns["joplin_type_"],
+          columns["joplin_created_time"],
+          columns["joplin_updated_time"],
+          columns["joplin_is_conflict"],
+          columns["joplin_latitude"],
+          columns["joplin_longitude"],
+          columns["joplin_altitude"],
+          columns["joplin_author"],
+          columns["joplin_source_url"],
+          columns["joplin_is_todo"],
+          columns["joplin_todo_due"],
+          columns["joplin_todo_completed"],
+          columns["joplin_source"],
+          columns["joplin_source_application"],
+          columns["joplin_application_data"],
+          columns["joplin_order"],
+          columns["joplin_user_created_time"],
+          columns["joplin_user_updated_time"],
+          columns["joplin_encryption_cipher_text"],
+          columns["joplin_encryption_applied"],
+          columns["joplin_encryption_blob_encrypted"],
+          columns["joplin_size"],
+          columns["joplin_markup_language"],
+          columns["joplin_is_shared"],
+          columns["joplin_note_id"],
+          columns["joplin_tag_id"],
+          columns["joplin_mime"],
+          columns["joplin_filename"],
+					columns["joplin_file_extension"]))
