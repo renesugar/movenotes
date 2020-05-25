@@ -169,7 +169,22 @@ def process_icloud_note(sqlconn, resources_path, columns):
 
   note_data += attachment_urls
 
-	# note_hash (hash the plain text)
+  markdown_text = ''
+  if note_data_format == 'text/plain':
+    markdown_text = common.text_to_markdown(note_data)
+  elif note_data_format == 'text/html':
+    markdown_text = common.html_to_markdown(note_data)
+  elif note_data_format == 'text/markdown':
+    # no conversion required
+    markdown_text = note_data
+
+  # note_data
+  note_data = markdown_text
+
+  # note_data_format
+  note_data_format = 'text/markdown'
+
+	# note_hash (hash the markdown text)
   h = hashlib.sha512()
   h.update(note_data.encode('utf-8'))
   note_hash = h.hexdigest()
@@ -199,7 +214,7 @@ def process_icloud_note(sqlconn, resources_path, columns):
   columns["note_uuid"] = None
   columns["note_parent_uuid"] = None
   columns["note_tag_uuid"] = None
-  columns["note_note_uiid"] = None
+  columns["note_note_uuid"] = None
   columns["note_original_format"] = note_original_format
   columns["note_internal_date"] = note_internal_date
   columns["note_hash"] = note_hash

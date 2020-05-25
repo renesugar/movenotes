@@ -300,9 +300,6 @@ def _save_note(output_path, email_address, folder_dict, columns):
   elif note_data_format == 'text/markdown':
     # no conversion required
     markdown_text = note_data
-  else:
-    # no body
-    markdown_text = note_data
 
   # NOTE: SQLite3 returning column as string even though sqlite3.PARSE_DECLTYPES specified
   note_internal_date = common.string_to_datetime(note_internal_date)
@@ -473,13 +470,17 @@ def process_note(output_path, email_address, folder_dict, row):
           else:
             attachmentTag = ('<a href="%s"/>' % (urlTuple.path,))       
 
+          # NOTE: A URL immediately after a "<br>" tag is not displayed in Joplin
+          #       e.g. <br>\n<http://www.google.com>
+          #       https://github.com/laurent22/joplin/issues/3270
+          
           # Add attachment link to HTML note text
           if html_text.find('</section>') != -1:
-            html_text = html_text.replace('</section>', '<br>\n' + attachmentTag + '</section>')
+            html_text = html_text.replace('</section>', '\n\n' + attachmentTag + '</section>')
           elif html_text.find('</body>') != -1:
-            html_text = html_text.replace('</body>', '<br>\n' + attachmentTag + '</body>')
+            html_text = html_text.replace('</body>', '\n\n' + attachmentTag + '</body>')
           else:
-            html_text += '<br>\n' + attachmentTag
+            html_text += '\n\n' + attachmentTag
 
     # Update HTML with modified links
     columns["note_data"] = html_text

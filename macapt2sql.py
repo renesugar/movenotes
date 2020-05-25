@@ -101,17 +101,37 @@ def process_apple_note(sqlconn, columns):
     note_internal_date = datetime.strptime(columns["apple_last_modified"], "%Y-%m-%d %H:%M:%S.%f")
   except ValueError as ve:
     note_internal_date = datetime.now()
+
   # note_data
-  if columns["apple_data"] is None:
+  note_data = str(columns["apple_data"])
+  if note_data is None:
     note_data = ''
-  else:
-    soup = BeautifulSoup(columns["apple_data"], "html.parser")
-    note_data = soup.get_text('\n')
 
   # note_data_format
-  note_data_format = 'text/plain'
+  if note_data.find('<html>') != -1:
+    note_data_format = 'text/html'
+  else:
+    note_data_format = 'text/plain'
 
-	# note_hash (hash the plain text)
+  markdown_text = ''
+  if note_data_format == 'text/plain':
+    markdown_text = common.text_to_markdown(note_data)
+  elif note_data_format == 'text/html':
+    markdown_text = common.html_to_markdown(note_data)
+  elif note_data_format == 'text/markdown':
+    # no conversion required
+    markdown_text = note_data
+
+  # note_data
+  note_data = markdown_text
+
+  # note_data_format
+  note_data_format = 'text/markdown'
+
+  # NOTE: BeautifulSoup loses URL for <a href="url">text</a>
+  #       when converting HTML to plain text
+
+	# note_hash (hash the markdown text)
   h = hashlib.sha512()
   h.update(note_data.encode('utf-8'))
   note_hash = h.hexdigest()
@@ -227,7 +247,7 @@ Source FROM Notes''')
     columns["note_uuid"] = None
     columns["note_parent_uuid"] = None
     columns["note_tag_uuid"] = None
-    columns["note_note_uiid"] = None
+    columns["note_note_uuid"] = None
     columns["note_original_format"] = None
     columns["note_internal_date"] = None
     columns["note_hash"] = None

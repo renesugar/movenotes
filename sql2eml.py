@@ -118,15 +118,14 @@ def _save_email(output_path, columns):
 
 	# email_body
 
-  if email_content_type == 'text/plain':
-    email_body = email_body.replace('\n', '\n<div><br></div>')
-  elif email_content_type == 'text/html':
-    email_body = common.html_to_text(email_body, '\n<div><br></div>')
-  else:
-    # no change
-    pass
-
 	# email_content_type
+
+  if email_content_type == 'text/plain':
+    # email_body
+    email_body = common.text_to_html(email_body)
+
+    # email_content_type
+    email_content_type = 'text/html'
 
 	# email_content_transfer_encoding
 
@@ -177,9 +176,18 @@ def process_icloud_note(output_path, email_address, row):
 
   print("processing '%s'" % (email_subject,))
 
-  email_body = row['note_data']
+  if row['note_data_format'] == 'text/markdown':
+    # email_body
+    email_body = common.markdown_to_html(row['note_data'])
 
-  email_content_type = row['note_data_format']
+    # email_content_type
+    email_content_type = 'text/html'
+  else:
+    # email_body
+    email_body = row['note_data']
+
+    # email_content_type
+    email_content_type = row['note_data_format']
 
   email_x_universally_unique_identifier = None
 
@@ -219,11 +227,24 @@ def process_email(output_path, email_address, row):
   if email_x_mail_created_date is None:
     email_x_mail_created_date = email_date
 
-	# email_body
-  email_body = row['email_body']
+  if row['email_content_type'] == 'text/html':
+    # email_body
+    email_body = row['email_body']
 
-	# email_content_type
-  email_content_type = row['email_content_type']
+    # email_content_type
+    email_content_type = 'text/html'
+  elif row['note_data_format'] == 'text/markdown':
+    # email_body
+    email_body = common.markdown_to_html(row['note_data'])
+
+    # email_content_type
+    email_content_type = 'text/html'
+  else:
+    # email_body
+    email_body = row['note_data']
+
+    # email_content_type
+    email_content_type = row['note_data_format']
 
   # email_x_universally_unique_identifier
   email_x_universally_unique_identifier = row['email_x_universally_unique_identifier']
@@ -270,7 +291,6 @@ def process_joplin_note(output_path, email_address, row):
   email_content_type = 'text/html'
 
   # email_x_universally_unique_identifier
-  # TODO: Use note_uuid?
   email_x_universally_unique_identifier = None
 
   # email_message_id
@@ -308,14 +328,20 @@ def process_apple_note(output_path, email_address, row):
   if email_x_mail_created_date is None:
     email_x_mail_created_date = email_date
 
-	# email_body
-  email_body = row['note_data']
+  if row['note_data_format'] == 'text/markdown':
+    # email_body
+    email_body = common.markdown_to_html(row['note_data'])
 
-	# email_content_type
-  email_content_type = row['note_data_format']
+    # email_content_type
+    email_content_type = 'text/html'
+  else:
+    # email_body
+    email_body = row['note_data']
+
+    # email_content_type
+    email_content_type = row['note_data_format']
 
   # email_x_universally_unique_identifier
-  # TODO: Use note_uuid?
   email_x_universally_unique_identifier = None
 
   # email_message_id
@@ -352,14 +378,20 @@ def process_bookmark_note(output_path, email_address, row):
   if email_x_mail_created_date is None:
     email_x_mail_created_date = email_date
 
-	# email_body
-  email_body = row['note_data']
+  if row['note_data_format'] == 'text/markdown':
+    # email_body
+    email_body = common.markdown_to_html(row['note_data'])
 
-	# email_content_type
-  email_content_type = row['note_data_format']
+    # email_content_type
+    email_content_type = 'text/html'
+  else:
+    # email_body
+    email_body = row['note_data']
+
+    # email_content_type
+    email_content_type = row['note_data_format']
 
   # email_x_universally_unique_identifier
-  # TODO: Use note_uuid?
   email_x_universally_unique_identifier = None
 
   # email_message_id
@@ -430,7 +462,7 @@ note_type,
 note_uuid,
 note_parent_uuid,
 note_tag_uuid,
-note_note_uiid,
+note_note_uuid,
 note_original_format,
 note_internal_date,
 note_hash,

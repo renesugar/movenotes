@@ -107,11 +107,9 @@ def process_joplin_note(sqlconn, resources_path, columns):
   # note_data_format
   note_data_format = 'text/markdown'
 
-  plain_text = common.markdown_to_text(note_data)
-
-	# note_hash (hash the plain text)
+	# note_hash (hash the markdown text)
   h = hashlib.sha512()
-  h.update(plain_text.encode('utf-8'))
+  h.update(note_data.encode('utf-8'))
   note_hash = h.hexdigest()
 
   # apple_id

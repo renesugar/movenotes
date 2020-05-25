@@ -144,7 +144,7 @@ def process_message(filename, email_address, sqlconn, sqlcur):
   note_title = common.remove_line_breakers(email_subject).strip()
 
   # email_body
-  msg_body = msg.get_body(preferencelist=('plain', 'html'))
+  msg_body = msg.get_body(preferencelist=('html', 'plain'))
   email_body = msg_body.get_content()
   # note_data
   note_data = email_body
@@ -158,19 +158,24 @@ def process_message(filename, email_address, sqlconn, sqlcur):
   # email_content_transfer_encoding
   email_content_transfer_encoding = msg_body['content-transfer-encoding']
 
-  plain_text = ''
-  if email_content_type == 'text/plain':
-    plain_text = email_body
-  elif email_content_type == 'text/html':
-    soup = BeautifulSoup(email_body, "html.parser")
-    plain_text = soup.get_text()
-  else:
-    # no body
-    plain_text = ''
+  markdown_text = ''
+  if note_data_format == 'text/plain':
+    markdown_text = common.text_to_markdown(note_data)
+  elif note_data_format == 'text/html':
+    markdown_text = common.html_to_markdown(note_data)
+  elif note_data_format == 'text/markdown':
+    # no conversion required
+    markdown_text = note_data
+
+  # note_data
+  note_data = markdown_text
+
+  # note_data_format
+  note_data_format = 'text/markdown'
 
   # note_hash (hash the plain text)
   h = hashlib.sha512()
-  h.update(plain_text.encode('utf-8'))
+  h.update(note_data.encode('utf-8'))
   note_hash = h.hexdigest()
 
   # email_x_uniform_type_identifier
