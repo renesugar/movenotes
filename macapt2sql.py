@@ -108,7 +108,9 @@ def process_apple_note(sqlconn, columns):
     note_data = ''
 
   # note_data_format
-  if note_data.find('<html>') != -1:
+  if note_data.find('<http') != -1:
+    note_data_format = 'text/markdown'
+  elif note_data.find('<div') != -1 or note_data.find('<span') != -1 or note_data.find('<html>') != -1:
     note_data_format = 'text/html'
   else:
     note_data_format = 'text/plain'

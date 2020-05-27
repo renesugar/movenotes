@@ -169,6 +169,9 @@ def process_icloud_note(sqlconn, resources_path, columns):
 
   note_data += attachment_urls
 
+  # apple_data
+  apple_data = note_data
+
   markdown_text = ''
   if note_data_format == 'text/plain':
     markdown_text = common.text_to_markdown(note_data)
@@ -188,9 +191,6 @@ def process_icloud_note(sqlconn, resources_path, columns):
   h = hashlib.sha512()
   h.update(note_data.encode('utf-8'))
   note_hash = h.hexdigest()
-
-  # apple_data
-  apple_data = note_data
 
   # apple_account_description
   apple_account_description = None

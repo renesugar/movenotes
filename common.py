@@ -14,6 +14,10 @@ from email.message import EmailMessage
 from email.parser import BytesParser, Parser
 from email.policy import default
 
+import urllib
+from urllib.parse import urlparse
+from urllib.parse import unquote
+
 from bs4 import BeautifulSoup
 
 from markdown2 import Markdown
@@ -53,6 +57,61 @@ import constants
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+def url_path_endswith(url, suffix):
+  if url is None:
+    return False
+
+  urlTuple = urllib.parse.urlsplit(url)
+  if urlTuple.path.endswith(suffix):
+    return True
+  return False
+
+def url_path_extension(url):
+  if url is None:
+    return ''
+
+  urlTuple = urllib.parse.urlsplit(url)
+
+  path, filename = os.path.split(urlTuple.path)
+
+  basename, extension = os.path.splitext(filename)
+
+  return extension
+
+# Markdown provides backslash escapes for the following characters:
+#
+# \   backslash
+# `   backtick
+# *   asterisk
+# _   underscore
+# {}  curly braces
+# []  square brackets
+# ()  parentheses
+# #   hash mark
+# +   plus sign
+# -   minus sign (hyphen)
+# .   dot
+# !   exclamation mark
+def markdown_escape(s):
+  if s is None:
+    return s
+  t = s.replace("\\", "\\\\")
+  t = t.replace("`", "\\`")
+  t = t.replace("*", "\\*")
+  t = t.replace("_", "\\_")
+  t = t.replace("{", "\\{")
+  t = t.replace("}", "\\}")
+  t = t.replace("[", "\\[")
+  t = t.replace("]", "\\]")
+  t = t.replace("(", "\\(")  
+  t = t.replace(")", "\\)")
+  t = t.replace("#", "\\#")
+  t = t.replace("+", "\\+")
+  t = t.replace("-", "\\-")
+  t = t.replace(".", "\\.")
+  t = t.replace("!", "\\!")
+  return t
 
 def parse_isoformat_datetime(s):
   if s[-1] == 'Z':

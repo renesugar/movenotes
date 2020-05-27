@@ -21,7 +21,11 @@ import hashlib
 
 import plistlib
 
+import urllib
+from urllib.parse import urlparse
 import urllib.request
+
+import html
 
 import notesdb
 import constants
@@ -109,22 +113,7 @@ def process_url_note(sqlconn, columns):
     note_data = ''
 
   # note_data_format
-  note_data_format = 'text/plain'
-
-  markdown_text = ''
-  if note_data_format == 'text/plain':
-    markdown_text = common.text_to_markdown(note_data)
-  elif note_data_format == 'text/html':
-    markdown_text = common.html_to_markdown(note_data)
-  elif note_data_format == 'text/markdown':
-    # no conversion required
-    markdown_text = note_data
-
-  # note_data
-  note_data = markdown_text
-
-  # note_data_format
-  note_data_format = 'text/markdown'
+  note_data_format = columns['note_data_format']
 
 	# note_hash (hash the markdown text)
   h = hashlib.sha512()
@@ -135,10 +124,10 @@ def process_url_note(sqlconn, columns):
   apple_id = None
 
   # apple_title
-  apple_title = note_title
+  apple_title = None
 
   # apple_snippet
-  apple_snippet = note_title
+  apple_snippet = None
 
   # apple_folder
 
@@ -147,7 +136,7 @@ def process_url_note(sqlconn, columns):
   # apple_last_modified
 
   # apple_data
-  apple_data = note_data
+  apple_data = None
 
   # apple_attachment_id
   apple_attachment_id = None
@@ -252,6 +241,22 @@ def main(args):
   db_settings = notesdb.get_db_settings(sqlcur, __db_schema_version__)
   notesdb.check_db_settings(db_settings, '%prog', __version__, __db_schema_min_version__, __db_schema_version__)
 
+  data_file_extensions = [
+    ".png",
+    ".jpeg",
+    ".jpg",
+    ".bmp",
+    ".txt",
+    ".pdf",
+    ".zip",
+    ".csv",
+    ".xls",
+    ".gzip",
+    ".gz",
+    ".7z",
+    ".xlsx",
+  ]
+
   with open(inputPath, 'r') as fp:
     lines = fp.readlines()
 
@@ -269,29 +274,46 @@ def main(args):
       last_modified = datetime.strptime(lines[index+2].strip(), '%Y-%m-%d %H:%M:%S.%f')
       note_url = lines[index+3].strip()
 
+      # Check for missing URL scheme
+      urlTuple = urllib.parse.urlsplit(note_url)
+      if urlTuple.scheme == '':
+        note_url = 'http://' + urlTuple.path
+
       # Get title for URL if possible
-      if note_title == note_url:
+      if note_title == note_url or note_url.endswith(note_title):
+        note_title = note_url
         try:
           if note_url in titles:
             # cached title
             note_title = titles[note_url]
+          # Don't download data files to get a title
+          elif common.url_path_extension(note_url) in data_file_extensions:
+            # Avoid HTTP request for non-HTML files
+            pass
           else:
             # request title
             with urllib.request.urlopen(note_url) as response:
-              html = response.read()
-              soup = BeautifulSoup(html, features="html.parser")
-              note_title = soup.title.string
-              if note_title is None:
-                note_title = note_url
-              else:
-                # cache title
-                titles[note_url] = note_title
+              http_message = response.info()
+              if http_message['Content-type'].split(';')[0] == 'text/html':
+                html_text = response.read()
+                soup = BeautifulSoup(html_text, features="html.parser")
+                note_title = soup.title.string
+                if note_title is None:
+                  note_title = note_url
+                else:
+                  # cache title
+                  titles[note_url] = note_title
         except:
           pass
       if note_title == '':
         note_title = 'New Note'
-            
-      note_data = note_title + '\n\n' + note_url
+
+      note_title = note_title.replace(u'\u808e', '')
+
+      # Markdown text for note
+      note_data = html.escape(common.markdown_escape(note_title)) + '\n  \n  \n' + '[' + html.escape(common.markdown_escape(note_title)) + '](' + common.markdown_escape(note_url) + ')'
+
+
       columns = {}
       columns["note_type"] = "note"
       columns["note_uuid"] = None
@@ -302,7 +324,7 @@ def main(args):
       columns["note_title"] = note_title
       columns["note_url"] = note_url
       columns["note_data"] = note_data
-      columns["note_data_format"] = None
+      columns["note_data_format"] = 'text/markdown'
       columns["apple_folder"] = note_folder
       columns["apple_created"] = add_date.strftime("%Y-%m-%d %H:%M:%S.%f")
       columns["apple_last_modified"] = last_modified.strftime("%Y-%m-%d %H:%M:%S.%f")

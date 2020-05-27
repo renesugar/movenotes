@@ -167,9 +167,6 @@ def process_joplin_note(output_path, email_address, folder_dict, row):
   elif note_data_format == 'text/markdown':
     # no conversion required
     markdown_text = note_data
-  else:
-    # no body
-    markdown_text = ''
 
   lines = markdown_text
   
@@ -415,9 +412,12 @@ def process_note(output_path, email_address, folder_dict, row):
   elif note_data_format == 'text/html':
     html_text = note_data
   else:
-    # Markdown text originated from Joplin
-    update_links = False
-
+    if note_original_format == 'joplin':
+      # Markdown text originated from Joplin
+      update_links = False
+    else:
+      html_text = common.markdown_to_html(note_data)
+  
   # Extract list of file:// links for text/plain or text/html notes
 
   outputResourcesPath = os.path.join(output_path, 'resources')
@@ -447,6 +447,8 @@ def process_note(output_path, email_address, folder_dict, row):
       if updated_url is not None:
         img['src'] = updated_url
 
+    html_text = str(soup)
+
     # Copy attachment to resources folder and update path in note text
     # https://docs.python.org/3/library/shutil.html#shutil.copy2
 
@@ -459,6 +461,7 @@ def process_note(output_path, email_address, folder_dict, row):
         updated_url = _copy_resource(url, output_path, note_internal_date)
 
         if updated_url is not None:
+          soup = BeautifulSoup(html_text, "html.parser")
           urlTuple = urllib.parse.urlsplit(updated_url)
           mime_type_, mime_subtype_ = common.getFileMimeType(urlTuple.path)
 
@@ -466,24 +469,33 @@ def process_note(output_path, email_address, folder_dict, row):
             common.error("Apple attachment ID missing for '%s'" % (urlTuple.path,))
           attachmentPath, attachmentFilename = os.path.split(urlTuple.path)
           if mime_type_ == "image":
-            attachmentTag = ('<img src="%s"/>' % (urlTuple.path,))
+            attachmentTag = soup.new_tag('img', attrs={"src": urlTuple.path})  
           else:
-            attachmentTag = ('<a href="%s"/>' % (urlTuple.path,))       
+            attachmentTag = soup.new_tag('a', attrs={"href": urlTuple.path})     
 
-          # NOTE: A URL immediately after a "<br>" tag is not displayed in Joplin
+          # NOTE: A link immediately after a "<br>" tag is not displayed in Joplin
           #       e.g. <br>\n<http://www.google.com>
+          #            <br>\n[Google](http://www.google.com)
           #       https://github.com/laurent22/joplin/issues/3270
+          #       https://github.com/laurent22/joplin/issues/3274
           
           # Add attachment link to HTML note text
-          if html_text.find('</section>') != -1:
-            html_text = html_text.replace('</section>', '\n\n' + attachmentTag + '</section>')
-          elif html_text.find('</body>') != -1:
-            html_text = html_text.replace('</body>', '\n\n' + attachmentTag + '</body>')
+          if soup.section is not None:
+            soup.section.append(attachmentTag)
+          elif soup.body is not None:
+            soup.body.append(attachmentTag)
           else:
-            html_text += '\n\n' + attachmentTag
+            soup.append(attachmentTag)
 
-    # Update HTML with modified links
-    columns["note_data"] = html_text
+          html_text = str(soup)
+
+    if note_data_format == 'text/markdown':
+      # Update markdown with modified links
+      markdown_text = common.html_to_markdown(html_text)
+      columns["note_data"] = markdown_text
+    else:
+      # Update HTML with modified links
+      columns["note_data"] = html_text
 
   # Create Joplin note
   _save_note(output_path, email_address, folder_dict, columns)
@@ -540,7 +552,11 @@ def main(args):
   db_settings = notesdb.get_db_settings(sqlcur, __db_schema_version__)
   notesdb.check_db_settings(db_settings, '%prog', __version__, __db_schema_min_version__, __db_schema_version__)
 
-  # Create Joplin resources directory
+  # Create input Joplin resources directory
+  if not os.path.isdir(inputResourcesPath):
+    os.makedirs(inputResourcesPath)
+
+  # Create output Joplin resources directory
   if not os.path.isdir(outputResourcesPath):
     os.makedirs(outputResourcesPath)
 
