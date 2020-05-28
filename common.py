@@ -179,6 +179,20 @@ def create_message_id(id_=None):
   else:
     return ("<%s>@mail.gmail.com" % (id_,))
 
+def defaultTitleFromBody(body):
+  if body is not None and len(body) > 0:
+    lines = body.strip().split('\n')
+    output = lines[0].strip()
+    # Remove the first #, *, etc.
+    while len(output) > 0:
+      c = output[0]
+      if c in ['#', ' ', '\n', '\t', '*', '`', '-']:
+        output = output[1:]
+      else:
+        break
+    return output.strip()
+  return 'Untitled'
+  
 def text_to_html(data):
   pattern = (
     r'((([A-Za-z]{3,9}:(?:\/\/)?)'  # scheme

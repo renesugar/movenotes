@@ -168,6 +168,11 @@ def process_joplin_note(output_path, email_address, folder_dict, row):
     # no conversion required
     markdown_text = note_data
 
+  lines  = common.markdown_escape(common.defaultTitleFromBody(note_title))
+
+  lines += '\n'
+  lines += '  \n'
+
   lines = markdown_text
   
   lines += '\n'
@@ -329,6 +334,11 @@ markup_language: 1
 is_shared: 0
 type_: 1'''
 
+  lines  = common.markdown_escape(common.defaultTitleFromBody(note_title))
+
+  lines += '\n'
+  lines += '  \n'
+  
   lines = ''
   lines += markdown_text
   lines += '\n'
