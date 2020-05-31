@@ -17,10 +17,11 @@ from email.policy import default
 import urllib
 from urllib.parse import urlparse
 from urllib.parse import unquote
+from urllib.parse import quote
 
-from bs4 import BeautifulSoup
+import mistune
 
-from markdown2 import Markdown
+from collections import namedtuple
 
 from datetime import datetime
 from pytz import timezone
@@ -58,6 +59,18 @@ import constants
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+def escape_url(link):
+  if link is None:
+    link = ""
+  # () are not safe in a markdown URL
+  safe = '/#:*?=%@+,&'
+  return html.escape(quote(html.unescape(link), safe=safe))
+
+def escape_html(s):
+  if s is None:
+    s = ""
+  return html.escape(html.unescape(s)).replace('&#x27;', "'")
+
 def url_path_endswith(url, suffix):
   if url is None:
     return False
@@ -78,40 +91,6 @@ def url_path_extension(url):
   basename, extension = os.path.splitext(filename)
 
   return extension
-
-# Markdown provides backslash escapes for the following characters:
-#
-# \   backslash
-# `   backtick
-# *   asterisk
-# _   underscore
-# {}  curly braces
-# []  square brackets
-# ()  parentheses
-# #   hash mark
-# +   plus sign
-# -   minus sign (hyphen)
-# .   dot
-# !   exclamation mark
-def markdown_escape(s):
-  if s is None:
-    return s
-  t = s.replace("\\", "\\\\")
-  t = t.replace("`", "\\`")
-  t = t.replace("*", "\\*")
-  t = t.replace("_", "\\_")
-  t = t.replace("{", "\\{")
-  t = t.replace("}", "\\}")
-  t = t.replace("[", "\\[")
-  t = t.replace("]", "\\]")
-  t = t.replace("(", "\\(")  
-  t = t.replace(")", "\\)")
-  t = t.replace("#", "\\#")
-  t = t.replace("+", "\\+")
-  t = t.replace("-", "\\-")
-  t = t.replace(".", "\\.")
-  t = t.replace("!", "\\!")
-  return t
 
 def parse_isoformat_datetime(s):
   if s[-1] == 'Z':
@@ -194,39 +173,25 @@ def defaultTitleFromBody(body):
   return 'Untitled'
   
 def text_to_html(data):
-  pattern = (
-    r'((([A-Za-z]{3,9}:(?:\/\/)?)'  # scheme
-    r'(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+(:\[0-9]+)?'  # user@hostname:port
-    r'|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)'  # www.|user@hostname
-    r'((?:\/[\+~%\/\.\w\-_]*)?'  # path
-    r'\??(?:[\-\+=&;%@\.\w_]*)'  # query parameters
-    r'#?(?:[\.\!\/\\\w]*))?)'  # fragment
-    r'(?![^<]*?(?:<\/\w+>|\/?>))'  # ignore anchor HTML tags
-    r'(?![^\(]*?\))'  # ignore links in brackets (Markdown links and images)
-)
-  link_patterns = [(re.compile(pattern),r'\1')]
-  markdown=Markdown(extras=["link-patterns"],link_patterns=link_patterns)
-  html_text = markdown.convert(html.escape(data))
+  markdown = mistune.Markdown() 
+  html_text = markdown.render(escape_html(data))
   return html_text
 
 def text_to_markdown(data):
   return html_to_markdown(text_to_html(data))
 
+class NoAutolinkRenderer(mistune.Renderer):
+  def __init__(self, escape=True, allow_harmful_protocols=None):
+    super(NoAutolinkRenderer, self).__init__(escape=escape, allow_harmful_protocols=allow_harmful_protocols)
+
+  def autolink(self, link, is_email=False):
+    return link
+
 def markdown_to_html(data):
-  markdown=Markdown()
-  return markdown.convert(data)
-
-def markdown_to_text(data):
-  markdown=Markdown()
-  html_text = markdown.convert(data)
-  soup = BeautifulSoup(html_text, "html.parser")
-  plain_text = soup.get_text()
-  return plain_text
-
-def html_to_text(data, separator='\n'):
-  soup = BeautifulSoup(data, "html.parser")
-  text = soup.get_text(separator)
-  return text
+  # NOTE: Autolinking is only done when converting from text to markdown
+  noautolink_renderer = NoAutolinkRenderer()
+  markdown = mistune.Markdown(renderer=noautolink_renderer) 
+  return markdown.render(data)
 
 def html_to_markdown(data):
   markdown = converters.Html2Markdown().convert(data)
@@ -249,23 +214,6 @@ def checkExtension(file, exts=None):
   elif extension in exts:
     return True
   return False
-
-def defaultTitleFromBody(line):
-  # Remove the first #, *, etc.
-  idx = 0
-  title = line.strip()
-  for c in title:
-    if c in ['#', ' ', '\n', '\t', '*', '`', '-']:
-      idx += 1
-    else:
-      break
-
-  title = title[idx:80]
-
-  if len(title) > 0:
-    return title
-
-  return 'Untitled'
 
 def getFileMimeType(filepath):
   mimetypes.init()
