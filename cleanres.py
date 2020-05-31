@@ -14,10 +14,6 @@ from email.message import EmailMessage
 from email.parser import BytesParser, Parser
 from email.policy import default
 
-from bs4 import BeautifulSoup
-
-from markdown2 import Markdown
-
 from datetime import datetime
 from pytz import timezone
 

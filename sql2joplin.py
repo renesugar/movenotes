@@ -17,9 +17,7 @@ from email.message import EmailMessage
 from email.parser import BytesParser, Parser
 from email.policy import default
 
-from bs4 import BeautifulSoup
-
-from markdown2 import Markdown
+import mistune
 
 from collections import namedtuple
 
@@ -168,12 +166,7 @@ def process_joplin_note(output_path, email_address, folder_dict, row):
     # no conversion required
     markdown_text = note_data
 
-  lines  = common.markdown_escape(common.defaultTitleFromBody(note_title))
-
-  lines += '\n'
-  lines += '  \n'
-
-  lines = markdown_text
+  lines  = markdown_text
   
   lines += '\n'
 
@@ -333,13 +326,13 @@ encryption_applied: 0
 markup_language: 1
 is_shared: 0
 type_: 1'''
-
-  lines  = common.markdown_escape(common.defaultTitleFromBody(note_title))
+  
+  # Add full title to the note text
+  lines  = common.escape_html(note_title)
 
   lines += '\n'
   lines += '  \n'
   
-  lines = ''
   lines += markdown_text
   lines += '\n'
 
@@ -352,6 +345,66 @@ type_: 1'''
   # save note to file
   with open(outputFilename, 'w') as fp:
     fp.write(lines)
+
+class LinkUpdateRenderer(mistune.Renderer):
+  def __init__(self, output_path, note_internal_date, attach_id=None, escape=True, allow_harmful_protocols=None):
+    super(LinkUpdateRenderer, self).__init__(escape=escape, allow_harmful_protocols=allow_harmful_protocols)
+    self.output_path_ = output_path
+    self.note_internal_date_ = note_internal_date
+    self.attach_id_ = attach_id
+
+  def image(self, src, title, alt_text):
+    if src is None:
+      src = ""
+
+    updated_url = _copy_resource(src, self.output_path_, self.note_internal_date_)
+
+    if updated_url is not None:
+      src = updated_url
+
+    if src.lower().startswith('http://'):
+      src = 'https://' + src[len('http://'):]
+    elif src.lower().startswith('https://'):
+      pass
+    elif src.lower().startswith('file://'):
+      pass
+
+    if alt_text is None:
+      pass
+    else:
+      link_text = """<img src="%s" alt="%s">""" % (src, alt_text)
+
+    return link_text
+
+  def link(self, link, title, content):
+    if link is None:
+      link = ""
+
+    updated_url = _copy_resource(link, self.output_path_, self.note_internal_date_)
+
+    if updated_url is not None:
+      if link == content:
+        content = updated_url
+      link = updated_url
+
+    if link.lower().startswith('http://'):
+      link = 'https://' + link[len('http://'):]
+    elif link.lower().startswith('https://'):
+      pass
+    elif link.lower().startswith('file://'):
+      pass
+
+    if content is None:
+      if title is None:
+        link_text = """<a href="%s"/>""" % (link)
+      else:
+        link_text = """<a href="%s" title="%s"/>""" % (link, title)
+    else:
+      if title is None:
+        link_text = """<a href="%s">%s</a>""" % (link, content)
+      else:
+        link_text = """<a href="%s" title="%s">%s</a>""" % (link, title, content)
+    return link_text
 
 def process_note(output_path, email_address, folder_dict, row):
   note_type = row['note_type']
@@ -410,102 +463,39 @@ def process_note(output_path, email_address, folder_dict, row):
   columns["apple_attachment_id"] = apple_attachment_id
   columns["apple_attachment_path"] = apple_attachment_path
 
-  # Convert note text to HTML
+  # Convert note text to markdown
 
   update_links = True
-  html_text = ''
+  markdown_text = ''
   if note_data_format == 'text/plain':
-    html_text = common.text_to_html(note_data)
-    columns["note_data"] = html_text
-    # Update note_data_format to text/html
-    columns["note_data_format"] = 'text/html'
+    markdown_text = common.text_to_markdown(note_data)
+    columns["note_data"] = markdown_text
+    # Update note_data_format to text/markdown
+    columns["note_data_format"] = 'text/markdown'
   elif note_data_format == 'text/html':
-    html_text = note_data
+    markdown_text = common.html_to_markdown(note_data)
+    columns["note_data"] = markdown_text
+    # Update note_data_format to text/markdown
+    columns["note_data_format"] = 'text/markdown'
   else:
     if note_original_format == 'joplin':
       # Markdown text originated from Joplin
       update_links = False
     else:
-      html_text = common.markdown_to_html(note_data)
-  
-  # Extract list of file:// links for text/plain or text/html notes
-
-  outputResourcesPath = os.path.join(output_path, 'resources')
+      markdown_text = note_data
 
   # Update file:// links with location of files in resources directory
 
   if update_links == True:
-    soup = BeautifulSoup(html_text, "html.parser")
+    linkUpdateRenderer = LinkUpdateRenderer(output_path, note_internal_date)
+    markdown = mistune.Markdown(renderer=linkUpdateRenderer) 
+    html_text = markdown.render(markdown_text)
+    markdown_text = common.html_to_markdown(html_text)
+    html_text = ""
 
-    # Links
-    for a in soup.findAll('a', href=True):
-      url = a['href']
-
-      # Copy file to resources folder
-      updated_url = _copy_resource(url, output_path, note_internal_date)
-
-      if updated_url is not None:
-        a['href'] = updated_url
-
-    # Image Links
-    for img in soup.findAll('img', src=True):
-      url = img['src']
-
-      # Copy file to resources folder
-      updated_url = _copy_resource(url, output_path, note_internal_date)
-
-      if updated_url is not None:
-        img['src'] = updated_url
-
-    html_text = str(soup)
-
-    # Copy attachment to resources folder and update path in note text
-    # https://docs.python.org/3/library/shutil.html#shutil.copy2
-
-    if apple_attachment_path is not None:
-      if os.path.isfile(apple_attachment_path) == True:
-        UrlParts = namedtuple('UrlParts', 'scheme netloc path query fragment')
-        # Create 'file' scheme URL that gets translated by html2txt
-        url = urllib.parse.urlunsplit(UrlParts('file', '', apple_attachment_path, '', ''))
-
-        updated_url = _copy_resource(url, output_path, note_internal_date)
-
-        if updated_url is not None:
-          soup = BeautifulSoup(html_text, "html.parser")
-          urlTuple = urllib.parse.urlsplit(updated_url)
-          mime_type_, mime_subtype_ = common.getFileMimeType(urlTuple.path)
-
-          if apple_attachment_id is None:
-            common.error("Apple attachment ID missing for '%s'" % (urlTuple.path,))
-          attachmentPath, attachmentFilename = os.path.split(urlTuple.path)
-          if mime_type_ == "image":
-            attachmentTag = soup.new_tag('img', attrs={"src": urlTuple.path})  
-          else:
-            attachmentTag = soup.new_tag('a', attrs={"href": urlTuple.path})     
-
-          # NOTE: A link immediately after a "<br>" tag is not displayed in Joplin
-          #       e.g. <br>\n<http://www.google.com>
-          #            <br>\n[Google](http://www.google.com)
-          #       https://github.com/laurent22/joplin/issues/3270
-          #       https://github.com/laurent22/joplin/issues/3274
-          
-          # Add attachment link to HTML note text
-          if soup.section is not None:
-            soup.section.append(attachmentTag)
-          elif soup.body is not None:
-            soup.body.append(attachmentTag)
-          else:
-            soup.append(attachmentTag)
-
-          html_text = str(soup)
-
-    if note_data_format == 'text/markdown':
-      # Update markdown with modified links
-      markdown_text = common.html_to_markdown(html_text)
-      columns["note_data"] = markdown_text
-    else:
-      # Update HTML with modified links
-      columns["note_data"] = html_text
+    # Update markdown with modified links
+    columns["note_data"] = markdown_text
+    columns["note_data_format"] = 'text/markdown'
 
   # Create Joplin note
   _save_note(output_path, email_address, folder_dict, columns)

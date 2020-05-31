@@ -311,7 +311,7 @@ def main(args):
       note_title = note_title.replace(u'\u808e', '')
 
       # Markdown text for note
-      note_data = html.escape(common.markdown_escape(note_title)) + '\n  \n  \n' + '[' + html.escape(common.markdown_escape(note_title)) + '](' + common.markdown_escape(note_url) + ')'
+      note_data = '[' + common.escape_html(note_title) + '](' + common.escape_url(note_url) + ')'
 
 
       columns = {}
