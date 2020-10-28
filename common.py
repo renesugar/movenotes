@@ -6,6 +6,7 @@ import errno
 import optparse
 import sqlite3
 import uuid
+import json
 
 import mimetypes
 import email
@@ -23,14 +24,18 @@ import mistune
 
 from collections import namedtuple
 
-from datetime import datetime
-from pytz import timezone
+from datetime import datetime, timezone
+#from pytz import timezone
 
 from html2txt import converters
 
 import html
 
 import hashlib
+
+import requests
+
+import time
 
 import constants
 
@@ -58,6 +63,159 @@ import constants
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+def unshorten_url(url, url_dict, error_dict, http_timeout=5):
+  isError = False
+  sleepSeconds = 0.1
+  maxRetries = 1
+  tries = 0
+  error_msg = "empty"
+  expanded_url = ""
+
+  if url in url_dict:
+    return (url_dict[url], url_dict, error_dict)
+  while tries < maxRetries:
+    try:
+      isError = False
+      expanded_url = requests.head(url, allow_redirects=True, timeout=http_timeout).url
+    except requests.exceptions.ConnectionError:
+      isError = True
+      error_msg = ("ERROR: URL '%s' was not expanded due to new connection error" % (url,))
+      expanded_url = url
+    except requests.exceptions.ReadTimeout:
+      isError = True
+      error_msg = ("ERROR: URL '%s' was not expanded due to read timeout" % (url,))
+      expanded_url = url
+    except requests.exceptions.Timeout:
+      isError = True
+      error_msg = ("ERROR: URL '%s' was not expanded due to timeout" % (url,))
+      expanded_url = url
+    except requests.exceptions.TooManyRedirects:
+      isError = True
+      error_msg = ("ERROR: URL '%s' was not expanded due to too many redirects" % (url,))
+      expanded_url = url
+    except Exception as e:
+      error_msg = "ERROR: " + str(e)
+
+    if isError == True:
+      time.sleep(sleepSeconds)
+      sleepSeconds += 0.1
+      tries += 1
+    else:
+      break
+
+  if isError == False and expanded_url != "" and expanded_url is not None:
+    url_dict[url] = expanded_url
+
+    if url in error_dict:
+      del error_dict[url]
+  else:
+    error_dict[url] = error_msg
+
+  return (expanded_url, url_dict, error_dict)
+
+def length_short_link(s, url_prefix):
+  pos = s.find(url_prefix)
+  path_pos = -1
+  if pos >= 0:
+    path_pos = pos + len(url_prefix)
+    while s[path_pos:path_pos+1].isalnum():
+      path_pos += 1
+  if path_pos > 0:
+    path_len = path_pos - pos
+  else:
+    path_len = 0
+  return path_len 
+
+def length_https_tco_link(s):
+  return length_short_link(s, "https://t.co/")
+
+def length_http_tco_link(s):
+  return length_short_link(s, "http://t.co/")
+
+def cleanup_https_tco_url(s):
+  if s.startswith("https://t.co/"):
+    path_len = length_https_tco_link(s)
+    if path_len < 23:
+      s = s[0:path_len]
+    else:
+      s = s[0:23]
+  return s
+
+def cleanup_http_tco_url(s):
+  pos = s.find("http://t.co/")
+  if pos >= 0:
+    path_len = length_http_tco_link(s[pos:])
+    s = s[pos:pos+path_len]
+  return s
+
+def cleanup_tco_url(s):
+  return cleanup_http_tco_url(cleanup_https_tco_url(s))
+
+def space_http_tco_links(s):
+  pos = s.find("http://t.co/")
+  while pos >= 0:
+    path_len = length_http_tco_link(s[pos:])
+    s = s[:pos] + " " + s[pos:pos+path_len] + " " + s[pos+path_len:]
+    pos += (12 + path_len + 2) # length of http://t.co prefix plus path plus 2 spaces
+    pos = s.find("http://t.co/", pos)
+  return s
+
+def space_https_tco_links(s):
+  pos = s.find("https://t.co/")
+  while pos >= 0:
+    s = s[:pos] + " " + s[pos:pos+23] + " " + s[pos+23:]
+    pos += 25 # length of t.co link plus 2 spaces
+    pos = s.find("https://t.co/", pos)
+  return s
+
+def expand_urls(txt, url_dict, error_dict):
+  lines = space_http_tco_links(space_https_tco_links(txt)).splitlines()
+  expanded_lines = ""
+  for line in lines:
+    words = line.split()
+    expanded_line = ""
+    for word in words:
+      if word.startswith("https://") or word.startswith("http://"):
+        word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # if word.startswith("https://t.co/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("http://t.co/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)        
+      # elif word.startswith("https://bit.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("http://bit.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("https://ow.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("http://ow.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("https://buff.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("http://buff.ly/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("https://tinyurl.com/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      # elif word.startswith("http://tinyurl.com/"):
+      #   word, url_dict, error_dict = unshorten_url(word, url_dict, error_dict)
+      if expanded_line != "":
+        expanded_line += " "
+      expanded_line += word
+    if expanded_lines != "":
+      expanded_lines += "\n"
+    expanded_lines += expanded_line
+  return (expanded_lines, url_dict, error_dict)
+
+def save_dict(file, mydict):
+  with open(file, 'w') as fp:
+    json.dump(mydict, fp)
+
+def load_dict(file):
+  mydict = {}
+  if os.path.isfile(file):
+    with open(file, "r") as fp:
+      mydict = json.load(fp)
+  return mydict
 
 def escape_url(link):
   if link is None:

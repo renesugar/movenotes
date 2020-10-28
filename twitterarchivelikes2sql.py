@@ -13,23 +13,13 @@ from email.message import EmailMessage
 from email.parser import BytesParser, Parser
 from email.policy import default
 
-from bs4 import BeautifulSoup
-
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import hashlib
 
-import plistlib
-
-import urllib
-from urllib.parse import urlparse
-import urllib.request
-
-import html
-
 import notesdb
-import constants
 import common
+import constants
 
 #
 # MIT License
@@ -59,11 +49,11 @@ import common
 #
 # Description:
 #
-# This program loads URL bookmarks into a SQLite database.
+# This program loads a mac_apt notes database into a SQLite database.
 #
 
 global __name__, __author__, __email__, __version__, __license__
-__program_name__ = 'url2sql'
+__program_name__ = 'twitterarchivelikes2sql'
 __author__ = 'Rene Sugar'
 __email__ = 'rene.sugar@gmail.com'
 __version__ = '1.00'
@@ -79,17 +69,20 @@ def _get_option_parser():
                       action="store", dest="email_address", default=None,
                       help="Email address")
     parser.add_option("", "--input",
-                      action="store", dest="input_path", default=[],
-                      help="Path to input URL bookmarks")
+                      action="store", dest="input_path", default=None,
+                      help="Path to input Twitter archive file")
     parser.add_option('', "--output",
                       action="store", dest="output_path", default=None,
-                      help="Path to output SQLite directory")
-    parser.add_option("", "--folder",
-                      action="store", dest="note_folder", default="Bookmarks",
-                      help="Folder name to store bookmark notes")
+                      help="Path to output notes SQLite directory")
+    parser.add_option("", "--cache",
+                      action="store", dest="url_dict", default=None,
+                      help="JSON dictionary containing expanded URLs")      
+    parser.add_option("", "--error",
+                      action="store", dest="error_dict", default=None,
+                      help="JSON dictionary containing unexpanded URLs and errors")                                         
     return parser
 
-def process_url_note(sqlconn, columns):
+def process_twitter_archive_note(sqlconn, columns):
   # note_title
   if columns["note_title"] is None:
     note_title = constants.NOTES_UNTITLED
@@ -98,8 +91,8 @@ def process_url_note(sqlconn, columns):
 
   print("processing '%s'" % (note_title,))
 
-  # note_original_format (email, apple, icloud, joplin, bookmark)
-  note_original_format = "bookmark"
+  # note_original_format (email, apple, icloud, joplin, bookmark, twitterarchive, twitterapi)
+  note_original_format = "twitterarchive"
 
 	# note_internal_date
 
@@ -208,10 +201,24 @@ def main(args):
   if hasattr(options, 'input_path') and options.input_path:
     inputPath = os.path.abspath(os.path.expanduser(options.input_path))
     if os.path.isfile(inputPath) == False:
-      # Check if input file exists
-      common.error("input path '%s' does not exist." % (inputPath,))
+      # Check if input directory exists
+      common.error("input file '%s' does not exist." % (inputPath,))
   else:
-    common.error("input path not specified.")
+    common.error("input file not specified.")
+
+  urlDictPath = ''
+
+  url_dict = {}
+  if hasattr(options, 'url_dict') and options.url_dict:
+    urlDictPath = os.path.abspath(os.path.expanduser(options.url_dict))
+    url_dict = common.load_dict(urlDictPath)
+
+  errorDictPath = ''
+
+  error_dict = {}
+  if hasattr(options, 'error_dict') and options.error_dict:
+    errorDictPath = os.path.abspath(os.path.expanduser(options.error_dict))
+    error_dict = common.load_dict(errorDictPath)
 
   outputPath = ''
 
@@ -222,14 +229,20 @@ def main(args):
       common.error("output path '%s' does not exist." % (outputPath,))
   else:
     common.error("output path not specified.")
-  
-  note_folder = None
-  if hasattr(options, 'note_folder') and options.note_folder:
-    note_folder = options.note_folder
+
+  twitterdbfile = inputPath
 
   notesdbfile = os.path.join(outputPath, 'notesdb.sqlite')
 
+  if not os.path.isfile(twitterdbfile):
+    common.error("input file does not exist")
+
   new_database = (not os.path.isfile(notesdbfile))
+
+  twitter_sqlconn = sqlite3.connect(twitterdbfile,
+    detect_types=sqlite3.PARSE_DECLTYPES)
+  twitter_sqlconn.row_factory = sqlite3.Row
+  twitter_sqlcur = twitter_sqlconn.cursor()
 
   sqlconn = sqlite3.connect(notesdbfile,
     detect_types=sqlite3.PARSE_DECLTYPES)
@@ -241,96 +254,52 @@ def main(args):
   db_settings = notesdb.get_db_settings(sqlcur, __db_schema_version__)
   notesdb.check_db_settings(db_settings, '%prog', __version__, __db_schema_min_version__, __db_schema_version__)
 
-  data_file_extensions = [
-    ".png",
-    ".jpeg",
-    ".jpg",
-    ".bmp",
-    ".txt",
-    ".pdf",
-    ".zip",
-    ".csv",
-    ".xls",
-    ".gzip",
-    ".gz",
-    ".7z",
-    ".xlsx",
-  ]
+  twitter_sqlcur.execute('''SELECT tweetId, 
+fullText, 
+expandedUrl
+FROM archive_like''')
 
-  with open(inputPath, 'r') as fp:
-    lines = fp.readlines()
+  notes_to_convert_results = twitter_sqlcur.fetchall()
+  current = 0
+  for row in notes_to_convert_results:
+    note_folder = "Twitter"
 
-    if (len(lines) % 4) != 0:
-      # File consists of a title line followed by date created, date modified and a URL line
-      # for each bookmark
-      print("Error: Uneven number of lines in file.\n")
-      sys.exit(1)
+    add_date = datetime.now()
 
-    titles = {}
-    index = 0
-    while index < len(lines):
-      note_title = lines[index].strip()
-      add_date = datetime.strptime(lines[index+1].strip(), '%Y-%m-%d %H:%M:%S.%f')
-      last_modified = datetime.strptime(lines[index+2].strip(), '%Y-%m-%d %H:%M:%S.%f')
-      note_url = lines[index+3].strip()
+    note_url  = row['expandedUrl']
+    note_text, url_dict, error_dict = common.expand_urls(row['fullText'], url_dict, error_dict)
+    note_title = common.defaultTitleFromBody(note_text.splitlines()[0])
 
-      # Check for missing URL scheme
-      urlTuple = urllib.parse.urlparse(note_url)
-      if urlTuple.scheme == '':
-        note_url = urllib.parse.urlunparse(urllib.parse.ParseResult(scheme="http", netloc=urlTuple.netloc, path=urlTuple.path, params=urlTuple.params, query=urlTuple.query, fragment=urlTuple.fragment))
+    note_data = note_text + "\n\n" + note_url
 
-      # Get title for URL if possible
-      if note_title == note_url or note_url.endswith(note_title):
-        note_title = note_url
-        try:
-          if note_url in titles:
-            # cached title
-            note_title = titles[note_url]
-          # Don't download data files to get a title
-          elif common.url_path_extension(note_url) in data_file_extensions:
-            # Avoid HTTP request for non-HTML files
-            pass
-          else:
-            # request title
-            with urllib.request.urlopen(note_url) as response:
-              http_message = response.info()
-              if http_message['Content-type'].split(';')[0] == 'text/html':
-                html_text = response.read()
-                soup = BeautifulSoup(html_text, features="html.parser")
-                note_title = soup.title.string
-                if note_title is None:
-                  note_title = note_url
-                else:
-                  # cache title
-                  titles[note_url] = note_title
-        except:
-          pass
-      if note_title == '':
-        note_title = 'New Note'
+    current += 1
+    columns = {}
 
-      note_title = note_title.replace(u'\u808e', '')
+    columns["note_type"] = "note"
+    columns["note_uuid"] = None
+    columns["note_parent_uuid"] = None
+    columns["note_original_format"] = None
+    columns["note_internal_date"] = add_date
+    columns["note_hash"] = None
+    columns["note_title"] = note_title
+    columns["note_url"] = note_url
+    columns["note_data"] = note_data
+    columns["note_data_format"] = 'text/markdown'
+    columns["apple_folder"] = note_folder
+    columns["apple_created"] = add_date.strftime("%Y-%m-%d %H:%M:%S.%f")
+    columns["apple_last_modified"] = columns["apple_created"]
 
-      # Markdown text for note
-      note_data = '[' + common.escape_html(note_title) + '](' + common.escape_url(note_url) + ')'
+    process_twitter_archive_note(sqlconn, columns)
+ 
+  sqlconn.commit()
 
+  if urlDictPath == "":
+    urlDictPath = "./url_dict.json"
+  common.save_dict(urlDictPath, url_dict)
 
-      columns = {}
-      columns["note_type"] = "note"
-      columns["note_uuid"] = None
-      columns["note_parent_uuid"] = None
-      columns["note_original_format"] = None
-      columns["note_internal_date"] = add_date
-      columns["note_hash"] = None
-      columns["note_title"] = note_title
-      columns["note_url"] = note_url
-      columns["note_data"] = note_data
-      columns["note_data_format"] = 'text/markdown'
-      columns["apple_folder"] = note_folder
-      columns["apple_created"] = add_date.strftime("%Y-%m-%d %H:%M:%S.%f")
-      columns["apple_last_modified"] = last_modified.strftime("%Y-%m-%d %H:%M:%S.%f")
-      process_url_note(sqlconn, columns)
-
-      index += 4
+  if errorDictPath == "":
+    errorDictPath = "./error_dict.json"
+  common.save_dict(errorDictPath, error_dict)
 
 if __name__ == "__main__":
   main(sys.argv[1:])
