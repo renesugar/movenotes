@@ -21,6 +21,10 @@ The Apple Notes app does not provide a ***move all*** action to move all Apple N
 
 [filterurls](https://github.com/renesugar/filterurls) is used to filter URLs from text files to be moved to GMail or Joplin as notes.
 
+[twitter-to-sqlite](https://github.com/dogsheep/twitter-to-sqlite) is used to extract Twitter likes via the Twitter API.
+
+[jq](https://github.com/stedolan/jq) is used to format JSON files.
+
 # Usage
 
 ## Extract Apple Notes
@@ -291,4 +295,79 @@ If the title matches the URL, titles will be retrieved online which can take som
 
 ```
 python3 -B url2sql.py --email your.email@address.com --input ./urls.txt --output ~/notesdb --folder Bookmarks
+```
+
+## Convert Twitter Likes to Notes
+
+### Extract Twitter Likes from API
+
+```
+twitter-to-sqlite favorites faves.db
+```
+
+### Extract Twitter Likes from Archive
+
+See [How to download your Twitter archive](https://help.twitter.com/en/managing-your-account/how-to-download-your-twitter-archive) on Twitter's website for how to download a copy of your Twitter archive.
+
+```
+$ twitter-to-sqlite import archiveYYYYMMDD.db ./twitter-YYYY-MM-DD-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/data/like.js
+```
+
+### Load Twitter likes from Archive into database
+
+```
+python3 -B twitterarchivelikes2sql.py --email your.email@address.com --input /path/to/Twitter/archive/likes/archiveYYYYMMDD.db --output ~/twitterdb --cache ./url_dict.json --error ./error_dict.json
+```
+
+### Expand Shortened URLs
+
+The Twitter archive contains shortened URLs using Twitter's URL shortener.
+
+Other URL shorteners are also used by the authors of the tweets.
+
+Over time, these URL shorteners can become unavailable so the URLs need to be expanded. The Twitter archive data may contain shortened URLs that can no longer be expanded for this reason.
+
+If there are expansion errors, this step will need to be repeated.
+
+```
+python3 -B expandurls.py --cache ./url_dict.json --error ./error_dict.json
+```
+
+```
+cat url_dict.json | jq '.' > temp.txt
+cp temp.txt url_dict.json
+rm temp.txt
+
+cat error_dict.json | jq '.' > temp.txt
+cp temp.txt error_dict.json
+rm temp.txt
+```
+
+Wipe the Twitter database and re-run the step to load the database with the cache of expanded URLs.
+
+```
+rm ~/twitterdb/*
+```
+
+### Load Twitter Likes from API into database
+
+```
+python3 -B twitterlikes2sql.py --email your.email@address.com --input /path/to/Twitter/API/likes/faves.db --output ~/twitterdb --cache ./url_dict.json --error ./error_dict.json
+```
+
+### Expand Shortened URLs
+
+Expand shortened URLs in the Twitter likes.
+
+
+Wipe the Twitter database and re-run the step to load the database with the cache of expanded URLs.
+
+```
+rm ~/twitterdb/*
+```
+
+### Convert database to Jopin Notes
+
+```
+python3 -B sql2joplin.py --email your.email@address.com --input ~/twitterdb --output ~/JoplinNotesRAW_Twitter
 ```

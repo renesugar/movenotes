@@ -21,8 +21,8 @@ import mistune
 
 from collections import namedtuple
 
-from datetime import datetime
-from pytz import timezone
+from datetime import datetime, timezone
+#from pytz import timezone
 
 import hashlib
 import shutil
@@ -205,7 +205,7 @@ def _save_resource(output_path, resource_id, filepath, filename, file_extension,
   # NOTE: SQLite3 returning column as string even though sqlite3.PARSE_DECLTYPES specified
   internal_date = common.string_to_datetime(internal_date)
 
-  created_time = internal_date.astimezone(timezone('UTC')).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+  created_time = internal_date.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
   data = '''%s 
 
@@ -299,7 +299,7 @@ def _save_note(output_path, email_address, folder_dict, columns):
   # NOTE: SQLite3 returning column as string even though sqlite3.PARSE_DECLTYPES specified
   note_internal_date = common.string_to_datetime(note_internal_date)
 
-  created_time = note_internal_date.astimezone(timezone('UTC')).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+  created_time = note_internal_date.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
   data = '''
 id: %s
@@ -481,6 +481,12 @@ def process_note(output_path, email_address, folder_dict, row):
     if note_original_format == 'joplin':
       # Markdown text originated from Joplin
       update_links = False
+    elif note_original_format == 'twitterarchive':
+      # Markdown text does not contain local links
+      update_links = False
+    elif note_original_format == 'twitterapi':
+      # Markdown text does not contain local links
+      update_links = False  
     else:
       markdown_text = note_data
 
@@ -727,6 +733,10 @@ joplin_file_extension FROM notes
     elif note_original_format == "apple":
       process_note(outputPath, email_address, folder_dict, row)
     elif note_original_format == "bookmark":
+      process_note(outputPath, email_address, folder_dict, row)
+    elif note_original_format == "twitterarchive":
+      process_note(outputPath, email_address, folder_dict, row)
+    elif note_original_format == "twitterapi":
       process_note(outputPath, email_address, folder_dict, row)
     else:
       common.error("unknown note type")

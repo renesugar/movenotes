@@ -14,8 +14,8 @@ from email.message import EmailMessage
 from email.parser import BytesParser, Parser
 from email.policy import default
 
-from datetime import datetime
-from pytz import timezone
+from datetime import datetime, timezone
+#from pytz import timezone
 
 import hashlib
 import shutil
