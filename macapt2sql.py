@@ -101,9 +101,13 @@ def process_apple_note(sqlconn, columns):
     note_internal_date = datetime.now()
 
   # note_data
-  note_data = str(columns["apple_data"])
+  note_data = columns["apple_data"]
   if note_data is None:
-    note_data = ''
+    note_data = ""
+  elif isinstance(note_data, bytes):
+    note_data = note_data.decode("utf-8", errors="replace")
+  else:
+    note_data = str(note_data)
 
   # note_data_format
   if note_data.find('<http') != -1:
