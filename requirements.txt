@@ -1,6 +1,6 @@
 requests==2.23.0
 regex==2020.4.4
 httplib2==0.18.1
-mistune==0.8.4
+mistune==2.0.3
 beautifulsoup4==4.9.3
 html2txt==0.6.0
